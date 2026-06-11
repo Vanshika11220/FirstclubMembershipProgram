@@ -7,6 +7,8 @@ import com.firstclub.membership.domain.model.MembershipTier;
 import com.firstclub.membership.factory.BenefitFactory;
 import com.firstclub.membership.repository.MembershipPlanRepository;
 import com.firstclub.membership.repository.MembershipTierRepository;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.boot.CommandLineRunner;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -16,6 +18,8 @@ import java.util.List;
 
 @Configuration
 public class MembershipDataInitializer {
+
+	private static final Logger log = LoggerFactory.getLogger(MembershipDataInitializer.class);
 
 	@Bean
 	CommandLineRunner seedMembershipData(MembershipPlanRepository planRepository,
@@ -27,6 +31,7 @@ public class MembershipDataInitializer {
 	}
 
 	private void seedPlans(MembershipPlanRepository planRepository) {
+		log.info("Seeding membership plans...");
 		if (!planRepository.findAllActive().isEmpty()) {
 			return;
 		}
@@ -40,6 +45,7 @@ public class MembershipDataInitializer {
 	}
 
 	private void seedTiers(MembershipTierRepository tierRepository) {
+		log.info("Seeding membership plans...");
 		if (!tierRepository.findAll().isEmpty()) {
 			return;
 		}

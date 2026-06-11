@@ -13,11 +13,6 @@ import java.util.stream.Collectors;
 @RestControllerAdvice
 public class GlobalExceptionHandler {
 
-	@ExceptionHandler(ResourceNotFoundException.class)
-	public ResponseEntity<Map<String, Object>> handleNotFound(ResourceNotFoundException ex) {
-		return buildResponse(HttpStatus.NOT_FOUND, ex);
-	}
-
 	@ExceptionHandler(MembershipException.class)
 	public ResponseEntity<Map<String, Object>> handleMembership(MembershipException ex) {
 		HttpStatus status = "CONCURRENT_MODIFICATION".equals(ex.getErrorCode())
