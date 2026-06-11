@@ -504,21 +504,5 @@ com.firstclub.membership/
     └── MembershipController.java
 ```
 
----
-
-## Key Metrics & Features
-
-| Aspect | Details |
-|--------|---------|
-| **Total Classes** | 25+ |
-| **Total Interfaces** | 5 |
-| **Total Enums** | 4 |
-| **Design Patterns** | Strategy, Factory, Repository, DAO |
-| **Concurrency Model** | Per-user locking + Optimistic versioning |
-| **Max Retries** | 3 attempts for optimistic locking |
-| **REST Endpoints** | 7 endpoints |
-| **Exception Hierarchy** | Custom exception with error codes |
-| **Records Used** | 6 (DTOs and Context) |
-| **Immutable Models** | MembershipPlan, MembershipTier, Benefit |
 
 
