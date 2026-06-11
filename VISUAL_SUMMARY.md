@@ -1,0 +1,524 @@
+# FirstClub Membership Program - Visual Architecture Summary
+
+## Layered Architecture Overview
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                      REST API Layer                         │
+│                  (MembershipController)                     │
+│  GET /catalog | POST /subscribe | GET /users/{id}           │
+│  POST /upgrade | POST /downgrade | POST /cancel             │
+│  POST /evaluate-tier                                        │
+└────────────────────────┬────────────────────────────────────┘
+                         │
+         ┌───────────────┼───────────────┐
+         │               │               │
+         ▼               ▼               ▼
+┌─────────────────┐ ┌──────────────┐ ┌──────────────────┐
+│ Subscription    │ │ Membership   │ │ Tier Evaluation │
+│ Service         │ │ Catalog      │ │ Service         │
+│                 │ │ Service      │ │                  │
+│ - subscribe     │ │              │ │ - evaluateAnd   │
+│ - getMembership │ │ - getCatalog │ │   Apply         │
+│ - upgradeTier   │ │ - getPlan    │ │                  │
+│ - downgradeTier │ │ - getTier    │ │ Uses Strategy   │
+│ - cancel        │ │              │ │ Pattern         │
+└────────┬────────┘ └──────┬───────┘ └────────┬────────┘
+         │                 │                  │
+         └─────────┬───────┴──────────────────┘
+                   │
+    ┌──────────────┼──────────────┐
+    │              │              │
+    ▼              ▼              ▼
+┌─────────────────────────────────────┐
+│  UserLockManager (Concurrency)      │
+│  - Per-user ReentrantLock           │
+│  - executeWithUserLock()            │
+└────────────┬────────────────────────┘
+             │
+    ┌────────┴────────┐
+    │                 │
+    ▼                 ▼
+┌──────────────────────────────────┐
+│     Repository Interfaces        │
+│                                  │
+│ - UserMembershipRepository       │
+│ - MembershipPlanRepository       │
+│ - MembershipTierRepository       │
+│                                  │
+│ Implements optimistic locking    │
+│ via saveWithVersionCheck()       │
+└────────────┬─────────────────────┘
+             │
+             ▼
+┌──────────────────────────────────┐
+│     Domain Models Layer          │
+│                                  │
+│ - UserMembership                 │
+│ - MembershipPlan                 │
+│ - MembershipTier                 │
+│ - Benefit                        │
+│                                  │
+│ Enums:                           │
+│ - MembershipStatus               │
+│ - TierLevel                      │
+│ - BenefitType                    │
+│ - PlanDuration                   │
+└──────────────────────────────────┘
+```
+
+---
+
+## Component Relationships Diagram
+
+```
+                    ┌──────────────────┐
+                    │ MembershipController
+                    └────────┬─────────┘
+                             │
+              ┌──────────────┼──────────────┐
+              │              │              │
+              ▼              ▼              ▼
+        ┌─────────┐   ┌──────────┐   ┌──────────────┐
+        │ Catalog │   │ Subscription│  │ TierEvaluation
+        │ Service │   │ Service  │   │ Service     │
+        └────┬────┘   └─────┬────┘   └──────┬───────┘
+             │              │              │
+             │              │      ┌───────┘
+             │              │      │
+             │        ┌─────┴──────┴──────┐
+             │        │ UserLockManager   │
+             │        └──────────┬────────┘
+             │                   │
+             └────┬──────────────┤
+                  │              │
+                  ▼              ▼
+          ┌────────────────────────────────┐
+          │  Repository Layer              │
+          │                                │
+          │ ┌──────────────────────────┐   │
+          │ │ UserMembershipRepository │   │
+          │ │ - findActiveByUserId()   │   │
+          │ │ - saveWithVersionCheck() │   │
+          │ └──────────────────────────┘   │
+          │                                │
+          │ ┌──────────────────────────┐   │
+          │ │ MembershipPlanRepository │   │
+          │ │ - findAllActive()        │   │
+          │ └──────────────────────────┘   │
+          │                                │
+          │ ┌──────────────────────────┐  │
+          │ │ MembershipTierRepository │  │
+          │ │ - findByLevel()          │  │
+          │ └──────────────────────────┘  │
+          └────────┬─────────────────────┘
+                   │
+                   ▼
+          ┌─────────────────────┐
+          │ Domain Models       │
+          │                     │
+          │ UserMembership  ◄───┼─── MembershipStatus
+          │ MembershipPlan      │   ├── TierLevel
+          │ MembershipTier  ◄───┼─── BenefitType
+          │ Benefit             │   └── PlanDuration
+          └─────────────────────┘
+```
+
+---
+
+## Strategy Pattern: Tier Evaluation
+
+```
+                    ┌─────────────────────────────┐
+                    │  TierEvaluationService      │
+                    └──────────────┬──────────────┘
+                                   │
+                                   ▼
+                    ┌─────────────────────────────┐
+                    │ TierEvaluationStrategy      │
+                    │ (Interface)                 │
+                    │                             │
+                    │ + evaluateEligibleTier()    │
+                    └──────────────┬──────────────┘
+                                   │
+                                   ▼
+                    ┌─────────────────────────────┐
+                    │ ConfigurableTierEvaluation  │
+                    │ Strategy                    │
+                    │                             │
+                    │ Platinum: 15+ orders OR     │
+                    │           ≥15K monthly OR   │
+                    │           PREMIUM/VIP       │
+                    │                             │
+                    │ Gold: 5+ orders OR          │
+                    │       ≥5K monthly           │
+                    │                             │
+                    │ Silver: Default             │
+                    └─────────────────────────────┘
+
+                  Takes: TierEvaluationContext
+                         - userId
+                         - orderCount
+                         - monthlyOrderValue
+                         - cohort
+
+                  Returns: TierLevel
+                           (SILVER/GOLD/PLATINUM)
+```
+
+---
+
+## Data Flow: Subscribe Operation
+
+```
+POST /api/v1/membership/subscribe
+{
+  "userId": "user123",
+  "planId": "plan_monthly",
+  "tierId": "tier_silver"
+}
+        │
+        ▼
+┌──────────────────────────────────────┐
+│ MembershipController.subscribe()      │
+└────────────┬─────────────────────────┘
+             │
+             ▼
+┌──────────────────────────────────────┐
+│ SubscriptionService.subscribe()       │
+└────────────┬─────────────────────────┘
+             │
+             ▼
+┌──────────────────────────────────────┐
+│ UserLockManager.executeWithUserLock() │
+│ (Acquire per-user lock)              │
+└────────────┬─────────────────────────┘
+             │
+             ├─ Validate no active membership
+             │  (Check repository)
+             │
+             ├─ Validate plan exists & active
+             │  (Ask CatalogService)
+             │
+             ├─ Validate tier exists
+             │  (Ask CatalogService)
+             │
+             ├─ Calculate expiry
+             │  (PlanDuration.addTo())
+             │
+             ├─ Create UserMembership
+             │
+             ├─ Save to repository
+             │
+             └─ Release lock
+                │
+                ▼
+        ┌──────────────────┐
+        │ Return Response  │
+        │ (200 CREATED)    │
+        └──────────────────┘
+```
+
+---
+
+## Data Flow: Tier Evaluation & Upgrade
+
+```
+POST /api/v1/membership/users/{userId}/evaluate-tier
+{
+  "orderCount": 20,
+  "monthlyOrderValue": 20000,
+  "cohort": "PREMIUM"
+}
+        │
+        ▼
+┌──────────────────────────────────────┐
+│ MembershipController.evaluateTier()   │
+└────────────┬─────────────────────────┘
+             │
+             ▼
+┌──────────────────────────────────────┐
+│ TierEvaluationService.evaluateAndApply()
+└────────────┬─────────────────────────┘
+             │
+             ▼
+┌──────────────────────────────────────┐
+│ UserLockManager.executeWithUserLock() │
+└────────────┬─────────────────────────┘
+             │
+             ├─ Create TierEvaluationContext
+             │
+             ├─ Call Strategy.evaluateEligibleTier()
+             │  → ConfigurableTierEvaluationStrategy
+             │  → Returns: PLATINUM
+             │
+             ├─ Get current tier
+             │  → Currently: SILVER
+             │
+             ├─ Check if tier upgrade possible
+             │  → PLATINUM > SILVER ✓
+             │
+             ├─ Update membership.tierId
+             │
+             ├─ saveWithVersionCheck() with retry logic
+             │  (If optimistic lock fails, retry up to 3x)
+             │
+             └─ Release lock
+                │
+                ▼
+        ┌──────────────────────────┐
+        │ Return TierEvaluation    │
+        │ Response                 │
+        │ - eligibleTier: PLATINUM │
+        │ - previousTier: SILVER   │
+        │ - appliedTier: PLATINUM  │
+        │ - tierUpgraded: true     │
+        └──────────────────────────┘
+```
+
+---
+
+## Concurrency Model
+
+### Per-User Locking
+
+```
+                 User A Timeline          User B Timeline
+                       │                        │
+                       │  Request 1             │
+                       │  /subscribe            │
+                       ├─ Lock acquired        │
+                       │  (User A lock)        │
+                       │  Processing...        │
+                       │                       ├─ Lock acquired
+                       │                       │  (User B lock)
+                       │  Processing...        │  Processing...
+                       │  Lock released        │
+                       │                       │  Lock released
+                       │  Request 2            │
+                       │  /upgrade             │
+                       ├─ Lock acquired        │
+                       │  (User A lock)        │
+                       │  Processing...        │
+                       │  Lock released        │
+
+Result: User A and User B operations are concurrent!
+        Same-user operations are serialized.
+```
+
+### Optimistic Locking Retry Logic
+
+```
+saveWithVersionCheck() Attempt:
+
+┌────────────────────────────────────────┐
+│ Read membership (version = 5)           │
+│ Modify membership                       │
+│ Try to save IF (stored version == 5)   │
+└────────┬───────────────────────────────┘
+         │
+         ▼
+    ┌─────────────┐
+    │ Version OK? │
+    └─────┬───┬───┘
+          │   │
+      YES │   │ NO (Another thread updated it)
+          │   │
+          ▼   ▼
+        SAVE RETRY
+             │
+             ▼
+      ┌────────────────┐
+      │ Re-read latest │
+      │ Retry (up to 3x)
+      └────────────────┘
+```
+
+---
+
+## Exception Hierarchy
+
+```
+┌──────────────────────────────────────┐
+│         java.lang.RuntimeException   │
+└──────────────────┬───────────────────┘
+                   │
+                   ▼
+        ┌──────────────────────┐
+        │ MembershipException  │
+        │ - errorCode: String  │
+        │ - getMessage()       │
+        └──────────┬───────────┘
+                   │
+        ┌──────────┴──────────┐
+        │                     │
+        ▼                     ▼
+  ┌──────────────┐    ┌────────────────────────┐
+  │ ResourceNot  │    │ ConcurrentModification │
+  │ FoundException   │ Exception               │
+  │ Code:"NOT_FOUND" │ Code:"CONCURRENT_MODIF" │
+  └──────────────┘    └────────────────────────┘
+
+Thrown by: Repository, Service, Controller
+```
+
+---
+
+## Factory Pattern: Benefit Creation
+
+```
+                    ┌──────────────────────┐
+                    │  BenefitFactory      │
+                    │  (Utility Class)     │
+                    └──────┬───────────────┘
+                           │
+          ┌────────────────┼────────────────┐
+          │                │                │
+          ▼                ▼                ▼
+    ┌──────────┐   ┌──────────────┐   ┌────────────┐
+    │freeDeliv │   │discountPercent│   │exclusiveD  │
+    │ery()    │   │age()         │   │eals()      │
+    │          │   │              │   │            │
+    │Returns:  │   │Returns:      │   │Returns:    │
+    │Benefit   │   │Benefit       │   │Benefit     │
+    │- type: F │   │- type: DISCO │   │- type: EXC │
+    │  REE_DEL │   │  UNT_PERCENT │   │  LUSIVE_DE │
+    │  IVERY   │   │  AGE         │   │  ALS       │
+    │- config: │   │- config:     │   │- config:   │
+    │  minOrd  │   │  percentage  │   │  (empty)   │
+    │  Value   │   │              │   │            │
+    └──────────┘   └──────────────┘   └────────────┘
+          │                │                │
+          ├────────────────┼────────────────┤
+          │                │                │
+          ▼                ▼                ▼
+    ┌──────────┐   ┌──────────────┐   ┌────────────┐
+    │earlyAcces│   │prioritySupport
+    │sSales()  │   │()             │
+    │          │   │               │
+    │Returns:  │   │Returns:       │
+    │Benefit   │   │Benefit        │
+    │- type: E │   │- type: PRIOR  │
+    │  ARLY_AC │   │  ITY_SUPPORT  │
+    │  CESS    │   │- config:      │
+    │- config: │   │  response     │
+    │  hoursE  │   │  TimeMinutes  │
+    │  arly: 24    │               │
+    └──────────┘   └──────────────┘
+```
+
+---
+
+## Request/Response Flow
+
+```
+                          HTTP Request
+                               │
+                 ┌─────────────┼─────────────┐
+                 │             │             │
+                 ▼             ▼             ▼
+           ┌─────────┐   ┌─────────┐   ┌──────────┐
+           │Subscribe│   │ GetMem- │   │Evaluate  │
+           │Request  │   │bership  │   │Tier      │
+           │         │   │Response │   │Response  │
+           └────┬────┘   └────┬────┘   └──────┬───┘
+                │              │              │
+                ▼              ▼              ▼
+        ┌──────────────┐ ┌──────────────┐ ┌──────────────┐
+        │ userId       │ │ membershipId  │ │ eligibleTier │
+        │ planId       │ │ userId        │ │ previousTier │
+        │ tierId       │ │ status        │ │ appliedTier  │
+        │              │ │ plan          │ │ tierUpgraded │
+        │              │ │ tier          │ │ membership   │
+        │              │ │ startDate     │ │              │
+        │              │ │ expiryDate    │ │              │
+        │              │ │ active        │ │              │
+        └──────┬───────┘ └──────┬────────┘ └──────┬───────┘
+               │                │                │
+               ▼                ▼                ▼
+        ┌──────────────────────────────────────────────┐
+        │           JSON Response (200/201)            │
+        └──────────────────────────────────────────────┘
+```
+
+---
+
+## Package Structure
+
+```
+com.firstclub.membership/
+│
+├── domain/
+│   ├── model/
+│   │   ├── UserMembership.java
+│   │   ├── MembershipPlan.java
+│   │   ├── MembershipTier.java
+│   │   └── Benefit.java
+│   └── enums/
+│       ├── MembershipStatus.java
+│       ├── TierLevel.java
+│       ├── BenefitType.java
+│       └── PlanDuration.java
+│
+├── repository/
+│   ├── UserMembershipRepository.java
+│   ├── MembershipPlanRepository.java
+│   ├── MembershipTierRepository.java
+│   └── inmemory/
+│       └── (In-memory implementations)
+│
+├── service/
+│   ├── SubscriptionService.java
+│   ├── MembershipCatalogService.java
+│   └── TierEvaluationService.java
+│
+├── strategy/
+│   ├── TierEvaluationStrategy.java
+│   ├── ConfigurableTierEvaluationStrategy.java
+│   └── TierEvaluationContext.java
+│
+├── factory/
+│   └── BenefitFactory.java
+│
+├── concurrency/
+│   └── UserLockManager.java
+│
+├── exception/
+│   ├── MembershipException.java
+│   ├── ResourceNotFoundException.java
+│   └── ConcurrentModificationException.java
+│
+├── dto/
+│   ├── request/
+│   │   ├── SubscribeRequest.java
+│   │   └── TierEvaluationRequest.java
+│   └── response/
+│       ├── MembershipResponse.java
+│       ├── TierResponse.java
+│       ├── PlanResponse.java
+│       ├── BenefitResponse.java
+│       ├── CatalogResponse.java
+│       └── TierEvaluationResponse.java
+│
+└── controller/
+    └── MembershipController.java
+```
+
+---
+
+## Key Metrics & Features
+
+| Aspect | Details |
+|--------|---------|
+| **Total Classes** | 25+ |
+| **Total Interfaces** | 5 |
+| **Total Enums** | 4 |
+| **Design Patterns** | Strategy, Factory, Repository, DAO |
+| **Concurrency Model** | Per-user locking + Optimistic versioning |
+| **Max Retries** | 3 attempts for optimistic locking |
+| **REST Endpoints** | 7 endpoints |
+| **Exception Hierarchy** | Custom exception with error codes |
+| **Records Used** | 6 (DTOs and Context) |
+| **Immutable Models** | MembershipPlan, MembershipTier, Benefit |
+
+

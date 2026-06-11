@@ -1,0 +1,370 @@
+@startuml FirstClubMembershipProgram
+!theme plain
+skinparam backgroundColor #FEFEFE
+skinparam classBackgroundColor #FFFFFF
+skinparam classBorderColor #333333
+skinparam arrowColor #333333
+skinparam packageBackgroundColor #E8F4F8
+skinparam packageBorderColor #333333
+
+' ============== PACKAGES ==============
+package "com.firstclub.membership.domain.model" {
+    class UserMembership {
+        - id: String
+        - userId: String
+        - planId: String
+        - tierId: String
+        - status: MembershipStatus
+        - startDate: Instant
+        - expiryDate: Instant
+        - version: long
+        + UserMembership(userId, planId, tierId, startDate, expiryDate)
+        + getId(): String
+        + getUserId(): String
+        + getPlanId(): String
+        + getTierId(): String
+        + getStatus(): MembershipStatus
+        + getVersion(): long
+        + isActive(): boolean
+        + cancel(): void
+        + markExpiredIfNeeded(): void
+        + incrementVersion(): void
+    }
+
+    class MembershipPlan {
+        - id: String
+        - name: String
+        - duration: PlanDuration
+        - price: BigDecimal
+        - active: boolean
+        + getId(): String
+        + getName(): String
+        + getDuration(): PlanDuration
+        + getPrice(): BigDecimal
+        + isActive(): boolean
+        {static} of(id, name, duration, price, active): MembershipPlan
+    }
+
+    class MembershipTier {
+        - id: String
+        - name: String
+        - level: TierLevel
+        - benefits: List<Benefit>
+        + getId(): String
+        + getName(): String
+        + getLevel(): TierLevel
+        + getBenefits(): List<Benefit>
+        {static} of(id, name, level, benefits): MembershipTier
+    }
+
+    class Benefit {
+        - id: String
+        - type: BenefitType
+        - description: String
+        - configuration: Map<String, String>
+        + getId(): String
+        + getType(): BenefitType
+        + getDescription(): String
+        + getConfiguration(): Map<String, String>
+        + getConfigValue(key): String
+        {static} of(id, type, description, config): Benefit
+    }
+}
+
+package "com.firstclub.membership.domain.enums" {
+    enum MembershipStatus {
+        ACTIVE
+        CANCELLED
+        EXPIRED
+    }
+
+    enum TierLevel {
+        SILVER(1)
+        GOLD(2)
+        PLATINUM(3)
+        + upgrade(): TierLevel
+        + downgrade(): TierLevel
+        + isHigherThan(other): boolean
+        + isLowerThan(other): boolean
+    }
+
+    enum BenefitType {
+        FREE_DELIVERY
+        DISCOUNT_PERCENTAGE
+        EXCLUSIVE_DEALS
+        EARLY_ACCESS_SALES
+        PRIORITY_SUPPORT
+    }
+
+    enum PlanDuration {
+        MONTHLY(1)
+        QUARTERLY(3)
+        YEARLY(12)
+        + getAmount(): int
+        + addTo(start): Instant
+    }
+}
+
+package "com.firstclub.membership.dto.request" {
+    class SubscribeRequest {
+        - userId: String
+        - planId: String
+        - tierId: String
+    }
+
+    class TierEvaluationRequest {
+        - orderCount: int
+        - monthlyOrderValue: BigDecimal
+        - cohort: String
+    }
+}
+
+package "com.firstclub.membership.dto.response" {
+    class MembershipResponse {
+        - membershipId: String
+        - userId: String
+        - status: String
+        - plan: PlanResponse
+        - tier: TierResponse
+        - startDate: Instant
+        - expiryDate: Instant
+        - active: boolean
+        {static} from(membership, plan, tier): MembershipResponse
+    }
+
+    class TierResponse {
+        - id: String
+        - name: String
+        - level: String
+        - benefits: List<BenefitResponse>
+        {static} from(tier): TierResponse
+    }
+
+    class PlanResponse {
+        - id: String
+        - name: String
+        - duration: String
+        - price: BigDecimal
+    }
+
+    class BenefitResponse {
+        - id: String
+        - type: String
+        - description: String
+        - configuration: Map<String, String>
+        {static} from(benefit): BenefitResponse
+    }
+
+    class CatalogResponse {
+        - plans: List<PlanResponse>
+        - tiers: List<TierResponse>
+    }
+
+    class TierEvaluationResponse {
+        - eligibleTier: String
+        - previousTier: String
+        - appliedTier: String
+        - tierUpgraded: boolean
+        - membership: MembershipResponse
+    }
+}
+
+package "com.firstclub.membership.repository" {
+    interface UserMembershipRepository {
+        + findActiveByUserId(userId): Optional<UserMembership>
+        + findById(id): Optional<UserMembership>
+        + save(membership): UserMembership
+        + saveWithVersionCheck(membership): Optional<UserMembership>
+    }
+
+    interface MembershipPlanRepository {
+        + findAllActive(): List<MembershipPlan>
+        + findById(id): Optional<MembershipPlan>
+        + save(plan): void
+    }
+
+    interface MembershipTierRepository {
+        + findAll(): List<MembershipTier>
+        + findById(id): Optional<MembershipTier>
+        + findByLevel(level): Optional<MembershipTier>
+        + save(tier): void
+    }
+}
+
+package "com.firstclub.membership.service" {
+    class SubscriptionService {
+        - membershipRepository: UserMembershipRepository
+        - catalogService: MembershipCatalogService
+        - userLockManager: UserLockManager
+        + subscribe(request): MembershipResponse
+        + getMembership(userId): MembershipResponse
+        + upgradeTier(userId): MembershipResponse
+        + downgradeTier(userId): MembershipResponse
+        + cancel(userId): MembershipResponse
+        - changeTier(userId, direction): MembershipResponse
+        - updateMembershipWithRetry(userId, mutator): MembershipResponse
+    }
+
+    class MembershipCatalogService {
+        - planRepository: MembershipPlanRepository
+        - tierRepository: MembershipTierRepository
+        + getCatalog(): CatalogResponse
+        + getPlanOrThrow(planId): MembershipPlan
+        + getTierOrThrow(tierId): MembershipTier
+        + getTierByLevelOrThrow(level): MembershipTier
+        - toPlanResponse(plan): PlanResponse
+        - toTierResponse(tier): TierResponse
+    }
+
+    class TierEvaluationService {
+        - membershipRepository: UserMembershipRepository
+        - tierRepository: MembershipTierRepository
+        - catalogService: MembershipCatalogService
+        - evaluationStrategy: TierEvaluationStrategy
+        - userLockManager: UserLockManager
+        + evaluateAndApply(userId, request): TierEvaluationResponse
+    }
+}
+
+package "com.firstclub.membership.strategy" {
+    interface TierEvaluationStrategy {
+        + evaluateEligibleTier(context): TierLevel
+    }
+
+    class ConfigurableTierEvaluationStrategy {
+        - PLATINUM_MIN_ORDERS: int = 15
+        - PLATINUM_MIN_MONTHLY_VALUE: BigDecimal = 15000
+        - PLATINUM_COHORTS: Set<String>
+        - GOLD_MIN_ORDERS: int = 5
+        - GOLD_MIN_MONTHLY_VALUE: BigDecimal = 5000
+        + evaluateEligibleTier(context): TierLevel
+        - qualifiesForPlatinum(context): boolean
+        - qualifiesForGold(context): boolean
+    }
+
+    class TierEvaluationContext {
+        - userId: String
+        - orderCount: int
+        - monthlyOrderValue: BigDecimal
+        - cohort: String
+    }
+}
+
+package "com.firstclub.membership.factory" {
+    class BenefitFactory {
+        {static} freeDelivery(minOrderValue): Benefit
+        {static} discountPercentage(percentage): Benefit
+        {static} exclusiveDeals(): Benefit
+        {static} earlyAccessSales(): Benefit
+        {static} prioritySupport(): Benefit
+    }
+}
+
+package "com.firstclub.membership.concurrency" {
+    class UserLockManager {
+        - locks: ConcurrentHashMap<String, ReentrantLock>
+        + <T> executeWithUserLock(userId, action): T
+        + executeWithUserLock(userId, action): void
+    }
+}
+
+package "com.firstclub.membership.exception" {
+    class MembershipException {
+        - errorCode: String
+        + MembershipException(errorCode, message)
+        + getErrorCode(): String
+    }
+
+    class ResourceNotFoundException {
+        + ResourceNotFoundException(message)
+    }
+
+    class ConcurrentModificationException {
+        + ConcurrentModificationException(message)
+    }
+}
+
+package "com.firstclub.membership.controller" {
+    class MembershipController {
+        - catalogService: MembershipCatalogService
+        - subscriptionService: SubscriptionService
+        - tierEvaluationService: TierEvaluationService
+        + getCatalog(): CatalogResponse
+        + subscribe(request): MembershipResponse
+        + getMembership(userId): MembershipResponse
+        + upgradeTier(userId): MembershipResponse
+        + downgradeTier(userId): MembershipResponse
+        + cancel(userId): MembershipResponse
+        + evaluateTier(userId, request): TierEvaluationResponse
+    }
+}
+
+' ============== RELATIONSHIPS ==============
+
+' Domain Model Relationships
+UserMembership --> MembershipStatus : uses
+UserMembership --> MembershipPlan : references
+UserMembership --> MembershipTier : references
+MembershipTier --> TierLevel : uses
+MembershipTier --> Benefit : has many
+Benefit --> BenefitType : uses
+MembershipPlan --> PlanDuration : uses
+
+' DTO Relationships
+MembershipResponse --> PlanResponse : contains
+MembershipResponse --> TierResponse : contains
+TierResponse --> BenefitResponse : contains many
+TierEvaluationResponse --> MembershipResponse : contains
+CatalogResponse --> PlanResponse : contains many
+CatalogResponse --> TierResponse : contains many
+
+' Repository Relationships
+UserMembershipRepository --> UserMembership : manages
+MembershipPlanRepository --> MembershipPlan : manages
+MembershipTierRepository --> MembershipTier : manages
+
+' Service Dependencies and Relationships
+SubscriptionService --> UserMembershipRepository : uses
+SubscriptionService --> MembershipCatalogService : uses
+SubscriptionService --> UserLockManager : uses
+SubscriptionService --> SubscribeRequest : receives
+SubscriptionService --> MembershipResponse : returns
+
+MembershipCatalogService --> MembershipPlanRepository : uses
+MembershipCatalogService --> MembershipTierRepository : uses
+MembershipCatalogService --> CatalogResponse : returns
+MembershipCatalogService --> MembershipPlan : uses
+MembershipCatalogService --> MembershipTier : uses
+
+TierEvaluationService --> UserMembershipRepository : uses
+TierEvaluationService --> MembershipTierRepository : uses
+TierEvaluationService --> MembershipCatalogService : uses
+TierEvaluationService --> TierEvaluationStrategy : uses
+TierEvaluationService --> UserLockManager : uses
+TierEvaluationService --> TierEvaluationRequest : receives
+TierEvaluationService --> TierEvaluationResponse : returns
+
+' Strategy Pattern
+ConfigurableTierEvaluationStrategy ..|> TierEvaluationStrategy : implements
+TierEvaluationStrategy --> TierEvaluationContext : accepts
+TierEvaluationStrategy --> TierLevel : returns
+
+' Factory Pattern
+BenefitFactory --> Benefit : creates
+
+' Exception Hierarchy
+ResourceNotFoundException --|> MembershipException : extends
+ConcurrentModificationException --|> MembershipException : extends
+
+' Controller Dependencies
+MembershipController --> MembershipCatalogService : uses
+MembershipController --> SubscriptionService : uses
+MembershipController --> TierEvaluationService : uses
+MembershipController --> SubscribeRequest : accepts
+MembershipController --> TierEvaluationRequest : accepts
+MembershipController --> MembershipResponse : returns
+MembershipController --> CatalogResponse : returns
+MembershipController --> TierEvaluationResponse : returns
+
+@enduml
+

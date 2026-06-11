@@ -1,0 +1,461 @@
+{
+	"info": {
+		"_postman_id": "firstclub-membership-api",
+		"name": "FirstClub Membership API",
+		"description": "REST API collection for the FirstClub Membership Program.\n\n## Setup\n1. Start the app: `./mvnw spring-boot:run`\n2. Run **Get Catalog** first — it auto-sets `planId` and `tierId` collection variables.\n3. Run **Subscribe** — it auto-sets `membershipId`.\n\n## Default seeded IDs\n- Plans: `plan-monthly`, `plan-quarterly`, `plan-yearly`\n- Tiers: `tier-silver`, `tier-gold`, `tier-platinum`",
+		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+	},
+	"variable": [
+		{
+			"key": "baseUrl",
+			"value": "http://localhost:8080",
+			"type": "string"
+		},
+		{
+			"key": "userId",
+			"value": "user-101",
+			"type": "string"
+		},
+		{
+			"key": "planId",
+			"value": "plan-monthly",
+			"type": "string"
+		},
+		{
+			"key": "tierId",
+			"value": "tier-silver",
+			"type": "string"
+		},
+		{
+			"key": "membershipId",
+			"value": "",
+			"type": "string"
+		}
+	],
+	"item": [
+		{
+			"name": "Catalog",
+			"item": [
+				{
+					"name": "Get Catalog",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test('Status is 200', () => pm.response.to.have.status(200));",
+									"",
+									"const body = pm.response.json();",
+									"",
+									"if (body.plans && body.plans.length > 0) {",
+									"    pm.collectionVariables.set('planId', body.plans[0].id);",
+									"}",
+									"",
+									"if (body.tiers && body.tiers.length > 0) {",
+									"    const silver = body.tiers.find(t => t.level === 'SILVER');",
+									"    pm.collectionVariables.set('tierId', silver ? silver.id : body.tiers[0].id);",
+									"}",
+									"",
+									"pm.test('Plans and tiers returned', () => {",
+									"    pm.expect(body.plans).to.be.an('array').that.is.not.empty;",
+									"    pm.expect(body.tiers).to.be.an('array').that.is.not.empty;",
+									"});"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/api/v1/membership/catalog",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "v1", "membership", "catalog"]
+						},
+						"description": "Returns all active membership plans and tiers with their configurable benefits."
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "Subscription",
+			"item": [
+				{
+					"name": "Subscribe",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test('Status is 201 Created', () => pm.response.to.have.status(201));",
+									"",
+									"const body = pm.response.json();",
+									"if (body.membershipId) {",
+									"    pm.collectionVariables.set('membershipId', body.membershipId);",
+									"}",
+									"if (body.userId) {",
+									"    pm.collectionVariables.set('userId', body.userId);",
+									"}",
+									"",
+									"pm.test('Membership is active', () => {",
+									"    pm.expect(body.active).to.eql(true);",
+									"    pm.expect(body.status).to.eql('ACTIVE');",
+									"});"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"userId\": \"{{userId}}\",\n  \"planId\": \"{{planId}}\",\n  \"tierId\": \"{{tierId}}\"\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/api/v1/membership/subscribe",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "v1", "membership", "subscribe"]
+						},
+						"description": "Subscribe a user to a membership plan and tier.\n\n**Body:**\n- `userId` — unique user identifier\n- `planId` — e.g. `plan-monthly`, `plan-quarterly`, `plan-yearly`\n- `tierId` — e.g. `tier-silver`, `tier-gold`, `tier-platinum`"
+					},
+					"response": []
+				},
+				{
+					"name": "Subscribe (Quarterly + Gold)",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"userId\": \"user-gold-demo\",\n  \"planId\": \"plan-quarterly\",\n  \"tierId\": \"tier-gold\"\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/api/v1/membership/subscribe",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "v1", "membership", "subscribe"]
+						},
+						"description": "Example: subscribe a different user directly to Quarterly plan with Gold tier."
+					},
+					"response": []
+				},
+				{
+					"name": "Get Membership",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test('Status is 200', () => pm.response.to.have.status(200));",
+									"",
+									"const body = pm.response.json();",
+									"pm.test('Membership details present', () => {",
+									"    pm.expect(body.userId).to.eql(pm.collectionVariables.get('userId'));",
+									"    pm.expect(body.plan).to.be.an('object');",
+									"    pm.expect(body.tier).to.be.an('object');",
+									"    pm.expect(body.expiryDate).to.be.a('string');",
+									"});"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/api/v1/membership/users/{{userId}}",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "v1", "membership", "users", "{{userId}}"]
+						},
+						"description": "Get the current active membership for a user, including plan, tier, start date, and expiry."
+					},
+					"response": []
+				},
+				{
+					"name": "Cancel Membership",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test('Status is 200', () => pm.response.to.have.status(200));",
+									"pm.test('Status is CANCELLED', () => {",
+									"    pm.expect(pm.response.json().status).to.eql('CANCELLED');",
+									"});"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/api/v1/membership/users/{{userId}}/cancel",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "v1", "membership", "users", "{{userId}}", "cancel"]
+						},
+						"description": "Cancel the active membership for a user."
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "Tier Management",
+			"item": [
+				{
+					"name": "Upgrade Tier",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test('Status is 200', () => pm.response.to.have.status(200));",
+									"pm.test('Tier upgraded', () => {",
+									"    const tier = pm.response.json().tier;",
+									"    pm.expect(tier.level).to.be.oneOf(['GOLD', 'PLATINUM']);",
+									"});"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/api/v1/membership/users/{{userId}}/upgrade",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "v1", "membership", "users", "{{userId}}", "upgrade"]
+						},
+						"description": "Manually upgrade membership tier by one level (Silver → Gold → Platinum)."
+					},
+					"response": []
+				},
+				{
+					"name": "Downgrade Tier",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test('Status is 200', () => pm.response.to.have.status(200));",
+									"pm.test('Tier downgraded', () => {",
+									"    const tier = pm.response.json().tier;",
+									"    pm.expect(tier.level).to.be.oneOf(['SILVER', 'GOLD']);",
+									"});"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/api/v1/membership/users/{{userId}}/downgrade",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "v1", "membership", "users", "{{userId}}", "downgrade"]
+						},
+						"description": "Manually downgrade membership tier by one level (Platinum → Gold → Silver)."
+					},
+					"response": []
+				},
+				{
+					"name": "Evaluate Tier (Gold eligibility)",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test('Status is 200', () => pm.response.to.have.status(200));",
+									"",
+									"const body = pm.response.json();",
+									"pm.test('Eligible for at least Gold', () => {",
+									"    pm.expect(body.eligibleTier).to.be.oneOf(['GOLD', 'PLATINUM']);",
+									"});"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"orderCount\": 10,\n  \"monthlyOrderValue\": 6000,\n  \"cohort\": null\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/api/v1/membership/users/{{userId}}/evaluate-tier",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "v1", "membership", "users", "{{userId}}", "evaluate-tier"]
+						},
+						"description": "Auto-evaluate tier based on order metrics.\n\n**Gold rules:** ≥ 5 orders OR ≥ ₹5,000 monthly spend\n**Platinum rules:** ≥ 15 orders OR ≥ ₹15,000 monthly spend OR cohort PREMIUM/VIP"
+					},
+					"response": []
+				},
+				{
+					"name": "Evaluate Tier (Platinum via cohort)",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"orderCount\": 2,\n  \"monthlyOrderValue\": 1000,\n  \"cohort\": \"PREMIUM\"\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/api/v1/membership/users/{{userId}}/evaluate-tier",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "v1", "membership", "users", "{{userId}}", "evaluate-tier"]
+						},
+						"description": "Example: qualify for Platinum via PREMIUM cohort regardless of order metrics."
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "Demo Flow (run in order)",
+			"item": [
+				{
+					"name": "1. Get Catalog",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"const body = pm.response.json();",
+									"if (body.plans?.length) pm.collectionVariables.set('planId', body.plans[0].id);",
+									"const silver = body.tiers?.find(t => t.level === 'SILVER');",
+									"if (silver) pm.collectionVariables.set('tierId', silver.id);",
+									"pm.collectionVariables.set('userId', 'demo-user-' + Date.now());"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/api/v1/membership/catalog",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "v1", "membership", "catalog"]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "2. Subscribe",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"userId\": \"{{userId}}\",\n  \"planId\": \"{{planId}}\",\n  \"tierId\": \"{{tierId}}\"\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/api/v1/membership/subscribe",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "v1", "membership", "subscribe"]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "3. Get Membership",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/api/v1/membership/users/{{userId}}",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "v1", "membership", "users", "{{userId}}"]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "4. Evaluate Tier (upgrade to Gold)",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"orderCount\": 10,\n  \"monthlyOrderValue\": 6000\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/api/v1/membership/users/{{userId}}/evaluate-tier",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "v1", "membership", "users", "{{userId}}", "evaluate-tier"]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "5. Upgrade to Platinum",
+					"request": {
+						"method": "POST",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/api/v1/membership/users/{{userId}}/upgrade",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "v1", "membership", "users", "{{userId}}", "upgrade"]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "6. Cancel Membership",
+					"request": {
+						"method": "POST",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/api/v1/membership/users/{{userId}}/cancel",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "v1", "membership", "users", "{{userId}}", "cancel"]
+						}
+					},
+					"response": []
+				}
+			],
+			"description": "End-to-end demo sequence. Run requests 1–6 in order using Postman Collection Runner."
+		}
+	]
+}
